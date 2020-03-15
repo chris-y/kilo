@@ -37,7 +37,7 @@
 #define _BSD_SOURCE
 #define _GNU_SOURCE
 
-#include <termios.h>
+//#include <termios.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -185,14 +185,16 @@ struct editorSyntax HLDB[] = {
 
 /* ======================= Low level terminal handling ====================== */
 
-static struct termios orig_termios; /* In order to restore at exit.*/
+//static struct termios orig_termios; /* In order to restore at exit.*/
 
 void disableRawMode(int fd) {
+#if 0
     /* Don't even check the return value as it's too late. */
     if (E.rawmode) {
         tcsetattr(fd,TCSAFLUSH,&orig_termios);
         E.rawmode = 0;
     }
+#endif
 }
 
 /* Called at exit to avoid remaining in raw mode. */
@@ -202,11 +204,13 @@ void editorAtExit(void) {
 
 /* Raw mode: 1960 magic shit. */
 int enableRawMode(int fd) {
+#if 0
     struct termios raw;
 
     if (E.rawmode) return 0; /* Already enabled. */
     if (!isatty(STDIN_FILENO)) goto fatal;
     atexit(editorAtExit);
+
     if (tcgetattr(fd,&orig_termios) == -1) goto fatal;
 
     raw = orig_termios;  /* modify the original mode */
@@ -227,10 +231,11 @@ int enableRawMode(int fd) {
     /* put terminal in raw mode after flushing */
     if (tcsetattr(fd,TCSAFLUSH,&raw) < 0) goto fatal;
     E.rawmode = 1;
+#endif
     return 0;
 
 fatal:
-    errno = ENOTTY;
+    errno = 1; //ENOTTY;
     return -1;
 }
 
@@ -315,6 +320,7 @@ int getCursorPosition(int ifd, int ofd, int *rows, int *cols) {
  * call fails the function will try to query the terminal itself.
  * Returns 0 on success, -1 on error. */
 int getWindowSize(int ifd, int ofd, int *rows, int *cols) {
+#if 0
     struct winsize ws;
 
     if (ioctl(1, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
@@ -338,10 +344,11 @@ int getWindowSize(int ifd, int ofd, int *rows, int *cols) {
         }
         return 0;
     } else {
-        *cols = ws.ws_col;
-        *rows = ws.ws_row;
+#endif
+        *cols = 32;
+        *rows = 20;
         return 0;
-    }
+//    }
 
 failed:
     return -1;
@@ -571,7 +578,7 @@ void editorInsertRow(int at, char *s, size_t len) {
     if (at > E.numrows) return;
     E.row = realloc(E.row,sizeof(erow)*(E.numrows+1));
     if (at != E.numrows) {
-        memmove(E.row+at+1,E.row+at,sizeof(E.row[0])*(E.numrows-at));
+        memmove(E.row+at+1,E.row+at,sizeof(E.row[0])*(E.numrows-at)); // E.row[0]
         for (int j = at+1; j <= E.numrows; j++) E.row[j].idx++;
     }
     E.row[at].size = len;
@@ -602,7 +609,7 @@ void editorDelRow(int at) {
     if (at >= E.numrows) return;
     row = E.row+at;
     editorFreeRow(row);
-    memmove(E.row+at,E.row+at+1,sizeof(E.row[0])*(E.numrows-at-1));
+    memmove(E.row+at,E.row+at+1,sizeof(E.row[0])*(E.numrows-at-1)); // E.row[0]
     for (int j = at; j < E.numrows-1; j++) E.row[j].idx++;
     E.numrows--;
     E.dirty++;
@@ -781,21 +788,23 @@ int editorOpen(char *filename) {
 
     fp = fopen(filename,"r");
     if (!fp) {
-        if (errno != ENOENT) {
+/*        if (errno != ENOENT) {
             perror("Opening file");
             exit(1);
-        }
+        }*/
         return 1;
     }
 
     char *line = NULL;
     size_t linecap = 0;
     ssize_t linelen;
+
     while((linelen = getline(&line,&linecap,fp)) != -1) {
         if (linelen && (line[linelen-1] == '\n' || line[linelen-1] == '\r'))
             line[--linelen] = '\0';
         editorInsertRow(E.numrows,line,linelen);
-    }
+    };
+
     free(line);
     fclose(fp);
     E.dirty = 0;
@@ -811,7 +820,7 @@ int editorSave(void) {
 
     /* Use truncate + a single write(2) call in order to make saving
      * a bit safer, under the limits of what we can do in a small editor. */
-    if (ftruncate(fd,len) == -1) goto writeerr;
+//    if (ftruncate(fd,len) == -1) goto writeerr;
     if (write(fd,buf,len) != len) goto writeerr;
 
     close(fd);
@@ -950,7 +959,7 @@ void editorRefreshScreen(void) {
     /* Second row depends on E.statusmsg and the status message update time. */
     abAppend(&ab,"\x1b[0K",4);
     int msglen = strlen(E.statusmsg);
-    if (msglen && time(NULL)-E.statusmsg_time < 5)
+    if (msglen) // && time(NULL)-E.statusmsg_time < 5)
         abAppend(&ab,E.statusmsg,msglen <= E.screencols ? msglen : E.screencols);
 
     /* Put cursor at its current position. Note that the horizontal position
@@ -980,7 +989,7 @@ void editorSetStatusMessage(const char *fmt, ...) {
     va_start(ap,fmt);
     vsnprintf(E.statusmsg,sizeof(E.statusmsg),fmt,ap);
     va_end(ap);
-    E.statusmsg_time = time(NULL);
+//    E.statusmsg_time = time(NULL);
 }
 
 /* =============================== Find mode ================================ */
